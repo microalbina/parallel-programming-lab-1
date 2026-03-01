@@ -1,0 +1,127 @@
+task.txt
+# Продукты сборки
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.out
+*.app
+*.o
+*.obj
+*.a
+*.lib
+*.dSYM/
+
+# Сгенерированные файлы
+*.class
+*.exe
+*.o
+*.obj
+*.so
+*.dll
+*.dylib
+*.a
+*.lib
+*.dSYM/
+
+# Директории сборки
+build/
+Build/
+build*/
+bin/
+obj/
+Debug/
+Release/
+x64/
+x86/
+*.user
+*.suo
+*.sln.docstates
+*.vcxproj.user
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+CMakeOutput.log
+CMakeError.log
+
+# IDE файлы
+.vs/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.cproject
+.settings/
+*.cbp
+*.layout
+*.depend
+*.backup
+
+# Тестовые файлы
+test_*
+*_test
+Testing/
+CTestTestfile.cmake
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+coverage/
+*.trace
+
+# Пакеты и зависимости
+*.tar.gz
+*.zip
+*.7z
+*.rar
+*.tgz
+*.bz2
+packages/
+node_modules/
+
+# Временные файлы
+*.log
+*.tmp
+*.temp
+*.bak
+*.old
+*.orig
+*.pid
+*.seed
+*.pid.lock
+
+# Документация
+doc/
+docs/
+*.html
+*.chm
+*.pdf
+*.epub
+
+# Специфичные для компилятора
+*.s
+*.ii
+*.i
+*.bc
+*.ll
+
+# Логи и метрики
+*.tps
+*.tpsinfo
+*.metrics
+*.prof
+*.lprof
+*.gcda
+*.gcno
+
+# Системные файлы
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
