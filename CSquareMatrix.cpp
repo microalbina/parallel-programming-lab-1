@@ -114,7 +114,7 @@ void multiplitionCheck(const CSquareMatrix<T, Size1>& mat1, const CSquareMatrix<
     auto time_multiplication = std::chrono::duration_cast<std::chrono::microseconds>(end_multiplication - start_multiplication);
     file << "Multiplication time: " << time_multiplication.count() << " microseconds\n";
     file << "Number of operations: " << (2*Size1 - 1)*Size1*Size1 << "\n";
-    
+
     for (size_t i = 0; i < Size1; i++) {
         for (size_t j = 0; j < Size1; j++) {
             file << res_mat[i][j] << " ";
@@ -134,6 +134,7 @@ int main() {
     try {
         writeOriginalMatricesFile(mat1, mat2);
         multiplitionCheck(mat1, mat2);
+        system("python verification_of_the_result.py");
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what();
     }
