@@ -2,6 +2,9 @@
 #include <array>
 #include <random>
 #include <ctime>
+#include <cstdlib>
+#include <fstream>
+#include <chrono>
 
 
 template <typename T, size_t Size>
@@ -33,18 +36,9 @@ class CSquareMatrix {
     }
 
 
-    void print() {
-        for (const auto& row : data_) {
-            for (const auto& num : row) {
-                std::cout << num << " ";
-            }
-            std::cout << "\n";
-        }
-    }
-
-
     void generateFullMatrix() {
-        static std::mt19937 gen{std::random_device{}()};
+        static std::random_device rd;
+        static std::mt19937 gen(rd());
         std::uniform_int_distribution<> dis(1, 10);
 
         for (auto& row : data_) {
@@ -73,16 +67,74 @@ CSquareMatrix<T, Size1> multiplyMatrices(const CSquareMatrix<T, Size1>& mat1, co
     return result;
 }
 
+
+template<typename T, size_t Size1, size_t Size2>
+void writeOriginalMatricesFile(const CSquareMatrix<T, Size1>& mat1, const CSquareMatrix<T, Size2>& mat2) {
+    if (Size1 != Size2) {
+        throw std::invalid_argument("Matrices must have the same size for multiplication");
+    }
+
+    std::ofstream file("original_matrices.txt");
+    if (!file.is_open()) {
+        throw std::runtime_error("Couldn't open the file");
+    }
+
+    for (size_t i = 0; i < Size1; i++) {
+        for (size_t j = 0; j < Size1; j++) {
+            file << mat1[i][j] << " ";
+        }
+        file << "\n";
+    }
+
+    file << '\n';
+
+    for (size_t i = 0; i < Size2; i++) {
+        for (size_t j = 0; j < Size2; j++) {
+            file << mat2[i][j] << " ";
+        }
+        file << "\n";
+    }
+
+    file.close();
+}
+
+
+template<typename T, size_t Size1, size_t Size2>
+void multiplitionCheck(const CSquareMatrix<T, Size1>& mat1, const CSquareMatrix<T, Size2>& mat2) {
+    std::ofstream file("result_matrix.txt");
+    if (!file.is_open()) {
+        throw std::runtime_error("Couldn't open the file");
+    }
+
+    CSquareMatrix<int, Size1> res_mat;
+
+    auto start_multiplication = std::chrono::high_resolution_clock::now();
+    res_mat = multiplyMatrices(mat1, mat2);
+    auto end_multiplication = std::chrono::high_resolution_clock::now();
+    auto time_multiplication = std::chrono::duration_cast<std::chrono::microseconds>(end_multiplication - start_multiplication);
+    file << "Multiplication time: " << time_multiplication.count() << " microseconds\n";
+    file << "Number of operations: " << (2*Size1 - 1)*Size1*Size1 << "\n";
+    
+    for (size_t i = 0; i < Size1; i++) {
+        for (size_t j = 0; j < Size1; j++) {
+            file << res_mat[i][j] << " ";
+        }
+        file << "\n";
+    }
+
+    file.close();
+}
+
+
 int main() {
-    CSquareMatrix<int, 10> matrix1;
-    matrix1.generateFullMatrix();
-    matrix1.print();
-    std::cout << "\n";
-    CSquareMatrix<int, 10> matrix2;
-    matrix2.generateFullMatrix();
-    matrix2.print();
-    std::cout << "\n";
-    CSquareMatrix<int, 10> matrix3;
-    matrix3 = multiplyMatrices(matrix1, matrix2);
-    matrix3.print();
+    CSquareMatrix<int, 100> mat1;
+    mat1.generateFullMatrix();
+    CSquareMatrix<int, 100> mat2;
+    mat2.generateFullMatrix();
+    try {
+        writeOriginalMatricesFile(mat1, mat2);
+        multiplitionCheck(mat1, mat2);
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what();
+    }
 }
