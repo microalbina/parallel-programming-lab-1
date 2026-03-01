@@ -1,3 +1,11 @@
+# Шалимова Альбина Алексеевна, 6213 группа
+# Лабораторная работа №1
+
+В первой лабораторной работе нужно было написать программу для перемножения квадратных матриц, вместе с автоматизированной верифекацией результата. В .cpp файле прописан класс CSuareMatrix, а также дополнительные функции, позволяющие записать в файл **"original_matrices.txt"** исходные матрица, а в файл **"result_matrices.txt"** получившуюся матрицу, вместе с временем выполнения и количеством операций. После записи матриц в файлы запускается питоновский скрипт, запускающий файл **"verification_of_the_result.py"**. Он в свою очередь считывает данные из .txt файлов, перемножает изначальные матрицы и сравнивает с результатом работы .cpp файла. Если матрицы получились разными, то в терминал выводится надпись *"Matrices are NOT equal"*, в случае успеха - *"Matrices are equal"*.
+
+## Исходный код
+### CSquareMatrix.cpp
+```cpp
 #include <iostream>
 #include <array>
 #include <random>
@@ -127,9 +135,9 @@ void multiplitionCheck(const CSquareMatrix<T, Size1>& mat1, const CSquareMatrix<
 
 
 int main() {
-    CSquareMatrix<int, 200> mat1;
+    CSquareMatrix<int, 100> mat1;
     mat1.generateFullMatrix();
-    CSquareMatrix<int, 200> mat2;
+    CSquareMatrix<int, 100> mat2;
     mat2.generateFullMatrix();
     try {
         writeOriginalMatricesFile(mat1, mat2);
@@ -139,3 +147,49 @@ int main() {
         std::cerr << "Error: " << e.what();
     }
 }
+```
+
+### verification_of_the_result.py
+``` py
+import numpy as np
+
+
+def verifyMatrices():
+
+    with open("original_matrices.txt", "r", encoding = "utf-8") as file1:
+        matrices = file1.read().split("\n\n")
+
+        mat1 = np.array([[int(x) for x in row.split()] for row in matrices[0].strip().split("\n")])
+        mat2 = np.array([[int(x) for x in row.split()] for row in matrices[1].strip().split("\n")])
+
+
+    with open("result_matrix.txt", "r", encoding = "utf-8") as file2:
+        matrix_lines = file2.readlines()[2:]
+        matrix = ''.join(matrix_lines).strip()
+
+        cpp_mat = np.array([[int(x) for x in row.split()] for row in matrix.split("\n")])
+
+
+    python_mat = np.matmul(mat1, mat2)
+    if np.array_equal(python_mat, cpp_mat):
+        print("Matrices are equal")
+    else:
+        print("Matrices are NOT equal")
+
+
+if __name__ == "__main__":
+    verifyMatrices()
+```
+## Результаты
+| Размер матрицы |  Время выполнения  | Количество операций | Результат проверки |
+|:--------------:|:------------------:|:-------------------:|:------------------:|
+|1 на 1          |  1 микросекунда    | 1                   | Matrices are equal |
+|10 на 10        |  50 микросекунд    | 1900                | Matrices are equal |
+|50 на 50        |  2720 микросекунд  | 247500              | Matrices are equal |
+|100 на 100      |  19424 микросекунд | 1990000             | Matrices are equal |
+|150 на 150      |  63880 микросекунд | 6727500             | Matrices are equal |
+**P.S. На матрице размера 250 на 250 программа перестала работать**
+
+## Выводы
+В данной работе не было использовано распараллеливание, поэтому пока невозможно сделать какие-либо выводы.
+
