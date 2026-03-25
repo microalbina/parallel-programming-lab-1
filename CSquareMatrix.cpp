@@ -127,14 +127,15 @@ void multiplitionCheck(const CSquareMatrix<T, Size1>& mat1, const CSquareMatrix<
 
 
 int main() {
-    CSquareMatrix<int, 200> mat1;
+    CSquareMatrix<int, 1600> mat1;
     mat1.generateFullMatrix();
-    CSquareMatrix<int, 200> mat2;
+    CSquareMatrix<int, 1600> mat2;
     mat2.generateFullMatrix();
     try {
         writeOriginalMatricesFile(mat1, mat2);
         multiplitionCheck(mat1, mat2);
         system("python verification_of_the_result.py");
+        std::cout << "Matrices are multiplied";
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what();
     }
