@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <chrono>
+#include <omp.h>
 
 
 template <typename T, size_t Size>
@@ -57,10 +58,12 @@ CSquareMatrix<T, Size1> multiplyMatrices(const CSquareMatrix<T, Size1>& mat1, co
     }
     
     CSquareMatrix<T, Size1> result;
-    for (size_t i = 0; i < Size1; i++) {
-        for (size_t j = 0; j < Size1; j++) {
-            for (size_t k = 0; k < Size1; k++) {
-                result[i][j] += mat1[i][k]*mat2[k][j];
+
+    #pragma omp parallel for
+    for (int i = 0; i < Size1; i++) {
+        for (int j = 0; j < Size1; j++) {
+            for (int k = 0; k < Size1; k++) {
+                result[i][j] += mat1[i][k]*mat2[i][j];
             }
         }
     }
@@ -127,9 +130,11 @@ void multiplitionCheck(const CSquareMatrix<T, Size1>& mat1, const CSquareMatrix<
 
 
 int main() {
-    CSquareMatrix<int, 1600> mat1;
+    omp_set_num_threads(12);
+
+    CSquareMatrix<int, 1800> mat1;
     mat1.generateFullMatrix();
-    CSquareMatrix<int, 1600> mat2;
+    CSquareMatrix<int, 1800> mat2;
     mat2.generateFullMatrix();
     try {
         writeOriginalMatricesFile(mat1, mat2);

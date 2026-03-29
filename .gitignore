@@ -1,4 +1,6 @@
 task.txt
+original_matrices.txt
+result_matrix.txt
 # Продукты сборки
 *.exe
 *.exe~
