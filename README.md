@@ -1,243 +1,230 @@
 # Шалимова Альбина Алексеевна, 6213 группа
-# Лабораторная работа №3
+# Лабораторная работа №4
 
 
-В третьей лабораторной работе нужно было распаралеллить перемножение матриц из первой лабораторной работы с помощью OpenMPI. Дальше необходимо было провести серию тестов с разными размерами матриц и разным количеством потоков, после чего - сформулировать вывод.
+В четвертой лабораторной работе нужно было распаралеллить перемножение матриц из первой лабораторной работы с помощью технологии CUDA. Дальше необходимо было провести серию тестов с разными размерами матриц и разным количеством блоков в гринде, после чего - сформулировать вывод.
 
 
 ## Исходный код
-В отличии от второй лабораторной работы, в третьей пришлось внести довольно много изменений, чтобы добится распаралелливания.
-- Подключен заголовочный файл *<mpi.h>*;
-- Изменен код перемножения матриц. Каждый процесс перемножает свои определенные строки, а потом отправляет их нулевому процессу, где локальные результаты собираются в конечную матрицу;
-- Матрицы теперь создаются не через метод класса, а через отдельную функцию, обеспечивающую передачу сгенерированных матриц каждому процессу;
-- Небольшие корректировки функций записи матриц в файлы - эту задачу выполняет только нулевой процесс, чтобы матрицы каждый раз не перезаписывались разными процессами;
-- Видоизменен main();
-- Вместо библиотеки *<chrono>* для подсчета времени, затраченного на перемножение матриц, была использована функция из библиотеки *<mpi.h>* - MPI_Wtime().
+Код четвертой лабораторной работы претерпел больше всего изменений. Для работы с CUDA необходим процессор Nvidia, а на моем ноутбуке установлен AMD Ryzen, из-за чего пришлось использовать расширение Google Colab. В дополнение пришлось немного переделать изначальный класс матриц, так как в нем использовался *std::array*, который задействует стек. Для перемножения матриц размером больше 400 на 400 в *CMakeLists.txt* приходилось вручную увеличивать размер стека. В Google Colab *CMakeLists.txt* трудно использовать, поэтому пришлось перейти с *std::array* на *std::vector*.
 
-### CSquareMatrix.cpp
+- Подключен заголовочный файл *<cuda_runtime.h>*;
+- Изменен класс матриц. Были добавлены методы обращения к элементу, превращающие двумерный поиск в одномерный;
+- Модифицирована функция перемножения матриц. Каждый из потоков путем одномерного перемножения строки и столбца исходных матрциц вычисляет элемент результирующей матрицы. Если было выделено больше потоков, чем элементов матрицы, то благодаря проверке *if (row < N && col < N)* они будут проигнорированы;
+- Функции записи матриц в файлы вернулись к первоначальному виду (для OenMPI их пришлось видоизменить);
+- Функция проверки перемножения теперь не только замеряет время, но и выделяет память в GPU под матрицы, передает туда исходные матрицы, умножает их и переносит резултьтат с GPU на CPU;
+- Для измерения времени использовались встроенные в CUDA функции.  
+
+
+### CSquareMatrix.cpp / colab.ipynb
 ```cpp
-#include <mpi.h>
+%%writefile CSquareMatrixCUDA.cu
+#include <vector>
+#include <cuda_runtime.h>
 
 
-template <typename T, size_t Size1, size_t Size2>
-CSquareMatrix<T, Size1> multiplyMatricesMPI(const CSquareMatrix<T, Size1>& mat1, const CSquareMatrix<T, Size2>& mat2, int rank, int size) {
-    if (Size1 != Size2) {
-       throw std::invalid_argument("Matrices must have the same size for multiplication");
-    }
+class CSquareMatrix {
+    private:
+    size_t size_;
+    std::vector<int> data_;
     
-    CSquareMatrix<T, Size1> result;
+    public:
+    CSquareMatrix(size_t size): size_(size), data_(size * size) {}
 
-    int rows = Size1 / size;
-    int remains = Size1 % size;
 
-    int start_row = rank * rows;
-    if (rank < remains) {
-        start_row += rank;
-        rows++;
-    } else {
-        start_row += remains;
-    }
-    int end_row = start_row + rows;
-
-    CSquareMatrix<T, Size1> local_result;
-    for (size_t i = start_row; i < end_row; i++) {
-        for (size_t j = 0; j < Size1; j++) {
-            T sum = 0;
-            for (size_t k = 0; k < Size1; k++) {
-                sum += mat1[i][k]*mat2[k][j];
-            }
-            local_result[i][j] = sum;
-        }
+    int* getData() {
+        return data_.data();
     }
 
-    if (rank == 0) {
-        for (size_t i = start_row; i < end_row; i++) {
-            for (size_t j = 0; j < Size1; j++) {
-                result[i][j] = local_result[i][j];
-            }
-        }
 
-        for (int process = 1; process < size; process++) {
-            int new_rows = Size1 / size;
-            int process_rows_start = process * new_rows;
-            int process_rows = 0;
-
-            if (process_rows_start < remains) {
-                process_rows_start += process;
-                process_rows = new_rows + 1;
-            } else {
-                process_rows_start += remains;
-                process_rows = new_rows;
-            }
-
-            MPI_Recv(&result[process_rows_start][0], process_rows * Size1, MPI_INT, process, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        }
-
-    } else {
-        MPI_Send(&local_result[start_row][0], rows * Size1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+    const int* getData() const {
+        return data_.data();
     }
 
-    return result;
-}
+
+    int& operator() (size_t row, size_t col) {
+        return data_[row * size_ + col];
+    }
 
 
-template <typename T, size_t Size>
-void generateFullMatrixMPI(CSquareMatrix<T, Size>& mat, int rank, int size) {
-    if (rank == 0) {
-        mat.generateFullMatrix();
+    const int& operator() (size_t row, size_t col) const {
+        return data_[row * size_ + col];
+    }
 
-        for (size_t i = 1; i < size; i++) {
-            MPI_Send(&mat[0][0], Size * Size, MPI_INT, i, 0, MPI_COMM_WORLD);
+
+    size_t getSize() const {
+        return size_;
+    }
+
+
+    void generateFullMatrix() {
+        static std::random_device rd;
+        static std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(1, 10);
+
+        for (auto& num : data_) {
+            num = dis(gen);
+        }
+    }
+};
+
+
+__global__ void multiplyMatricesCUDA(const int* A, const int* B, int* C, int N) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (row < N && col < N) {
+        int sum = 0;
+        for (int k = 0; k < N; k++) {
+            sum += A[row * N + k] * B[k * N + col];
         }
 
-    } else {
-        MPI_Recv(&mat[0][0], Size * Size, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        C[row * N + col] = sum;
     }
 }
 
 
-template <typename T, size_t Size1, size_t Size2>
-void writeOriginalMatricesFile(const CSquareMatrix<T, Size1>& mat1, const CSquareMatrix<T, Size2>& mat2, int rank) {
-    if (Size1 != Size2) {
+void writeOriginalMatricesFile(const CSquareMatrix& A, const CSquareMatrix& B) {
+    if (A.getSize() != B.getSize()) {
             throw std::invalid_argument("Matrices must have the same size for multiplication");
     }
 
-    if (rank == 0) {
-        std::ofstream file("original_matrices.txt");
-        if (!file.is_open()) {
-            throw std::runtime_error("Couldn't open the file");
-        }
-
-        for (size_t i = 0; i < Size1; i++) {
-            for (size_t j = 0; j < Size1; j++) {
-                file << mat1[i][j] << " ";
-            }
-            file << "\n";
-        }
-
-        file << '\n';
-
-        for (size_t i = 0; i < Size2; i++) {
-            for (size_t j = 0; j < Size2; j++) {
-                file << mat2[i][j] << " ";
-            }
-            file << "\n";
-        }
-
-        file.close();
+    std::ofstream file("original_matrices.txt");
+    if (!file.is_open()) {
+        throw std::runtime_error("Couldn't open the file");
     }
+
+    size_t size = A.getSize();
+    for (size_t i = 0; i < size; i++) {
+        for (size_t j = 0; j < size; j++) {
+            file << A(i, j) << " ";
+        }
+
+        file << "\n";
+    }
+
+    file << '\n';
+
+    for (size_t i = 0; i < size; i++) {
+        for (size_t j = 0; j < size; j++) {
+            file << B(i, j) << " ";
+        }
+        file << "\n";
+    }
+
+    file.close();
 }
 
 
-template <typename T, size_t Size1, size_t Size2>
-void multiplitionCheckMPI(const CSquareMatrix<T, Size1>& mat1, const CSquareMatrix<T, Size2>& mat2, int rank, int size) {
-    if (Size1 != Size2) {
+void multiplicationCheckCUDA(const CSquareMatrix& A, const CSquareMatrix& B) {
+    if (A.getSize() != B.getSize()) {
             throw std::invalid_argument("Matrices must have the same size for multiplication");
     }
 
-    CSquareMatrix<int, Size1> res_mat;
-    MPI_Barrier(MPI_COMM_WORLD);
-    auto start_multiplication = MPI_Wtime();
-    res_mat = multiplyMatricesMPI(mat1, mat2, rank, size);
-    MPI_Barrier(MPI_COMM_WORLD);
-    auto end_multiplication = MPI_Wtime();
+    int N = A.getSize();
+    const size_t bytes = N * N * sizeof(int);
 
-    if (rank == 0) {
-        std::ofstream file("result_matrix.txt");
-        if (!file.is_open()) {
-            throw std::runtime_error("Couldn't open the file");
-        }
+    int *d_A, *d_B, *d_C;
+    cudaMalloc(&d_A, bytes);
+    cudaMalloc(&d_B, bytes);
+    cudaMalloc(&d_C, bytes);
 
-        auto time_multiplication = (end_multiplication - start_multiplication) * 1000000;
-        file << "Multiplication time: " << time_multiplication << " microseconds\n";
-        file << "Number of operations: " << (2*Size1 - 1)*Size1*Size1 << "\n";
+    cudaMemcpy(d_A, A.getData(), bytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, B.getData(), bytes, cudaMemcpyHostToDevice);
 
-        for (size_t i = 0; i < Size1; i++) {
-            for (size_t j = 0; j < Size1; j++) {
-                file << res_mat[i][j] << " ";
-            }
-            file << "\n";
-        }
 
-        file.close();
+    dim3 blockSize(8, 8);
+    dim3 gridSize((N + blockSize.x- 1) / blockSize.x, (N + blockSize.y- 1) / blockSize.y);
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    cudaEventRecord(start);
+    multiplyMatricesCUDA<<<gridSize, blockSize>>>(d_A, d_B, d_C, N);
+    cudaEventRecord(stop);
+
+    cudaEventSynchronize(stop);
+
+    float time_multiplication;
+    cudaEventElapsedTime(&time_multiplication, start, stop);
+
+    CSquareMatrix result(N);
+    cudaMemcpy(result.getData(), d_C, bytes, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
+    std::ofstream file("result_matrix.txt");
+    if (!file.is_open()) {
+        throw std::runtime_error("Couldn't open the file");
     }
+
+    file << "Multiplication time: " << time_multiplication * 1000 << " microseconds\n";
+    file << "Number of operations: " << (2 * N - 1) * N * N << "\n";
+
+    for (size_t i = 0; i < N; i++) {
+        for (size_t j = 0; j < N; j++) {
+            file << result(i, j) << " ";
+        }
+
+        file << "\n";
+    }
+
+    file.close();
 }
 
 
-int main(int argc, char* argv[]) {
+int main() {
+    int N = 200;
 
-    MPI_Init(&argc, &argv);
-
-    int size, rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-    CSquareMatrix<int, 1600> mat1;
-    CSquareMatrix<int, 1600> mat2;
-    generateFullMatrixMPI(mat1, rank, size);
-    generateFullMatrixMPI(mat2, rank, size);
+    CSquareMatrix h_A(N), h_B(N);
+    h_A.generateFullMatrix();
+    h_B.generateFullMatrix();
 
     try {
-        writeOriginalMatricesFile(mat1, mat2, rank);
-        multiplitionCheckMPI(mat1, mat2, rank, size);
-        system("python verification_of_the_result.py");
-        if (rank == 0) {
-        std::cout << "Matrices are multiplied";
-        }
+        multiplicationCheckCUDA(h_A, h_B);
+        std::cout << "Matrices are multiplied\n";
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what();
     }
-
-    MPI_Finalize();
 }
 ```
 
 ## Результаты
-### Для 1 потока
+### 8 на 8 потоков на блок
 |   Размер матрицы  |     Время выполнения     | Количество операций | Результат проверки |
 |:-----------------:|:------------------------:|:-------------------:|:------------------:|
-|200 на 200         |  212465 микросекунд      | 15960000            | Matrices are equal |
-|400 на 400         |  1844070 микросекунд     | 127840000           | Matrices are equal |
-|800 на 800         |  14884200 микросекунд    | 1023360000          | Matrices are equal |
-|1200 на 1200       |  51382400 микросекунд    | 3454560000          | Matrices are equal |
-|1600 на 1600       |  122941000 микросекунд   | 8189440000          | Matrices are equal |
+|200 на 200         |  208 микросекунд         | 15960000            | Matrices are equal |
+|400 на 400         |  588 микросекунд         | 127840000           | Matrices are equal |
+|800 на 800         |  4883 микросекунд        | 1023360000          | Matrices are equal |
+|1200 на 1200       |  11208 микросекунд       | 3454560000          | Matrices are equal |
+|1600 на 1600       |  32710 микросекунд       | 8189440000          | Matrices are equal |
 
-### Для 2 потоков
+### 16 на 16 потоков на блок
 |   Размер матрицы  |     Время выполнения     | Количество операций | Результат проверки |
 |:-----------------:|:------------------------:|:-------------------:|:------------------:|
-|200 на 200         |  67124 микросекунд       | 15960000            | Matrices are equal |
-|400 на 400         |  411924 микросекунд      | 127840000           | Matrices are equal |
-|800 на 800         |  3662390 микросекунд     | 1023360000          | Matrices are equal |
-|1200 на 1200       |  12093300 микросекунд    | 3454560000          | Matrices are equal |
-|1600 на 1600       |  28378000 микросекунд    | 8189440000          | Matrices are equal |
+|200 на 200         |  255 микросекунд         | 15960000            | Matrices are equal |
+|400 на 400         |  415 микросекунд         | 127840000           | Matrices are equal |
+|800 на 800         |  3688 микросекунд        | 1023360000          | Matrices are equal |
+|1200 на 1200       |  12582 микросекунд       | 3454560000          | Matrices are equal |
+|1600 на 1600       |  20463 микросекунд       | 8189440000          | Matrices are equal |
 
-### Для 4 потоков
+### 32 на 32 потоков на блок
 |   Размер матрицы  |     Время выполнения     | Количество операций | Результат проверки |
 |:-----------------:|:------------------------:|:-------------------:|:------------------:|
-|200 на 200         |  38898 микросекунд       | 15960000            | Matrices are equal |
-|400 на 400         |  308180 микросекунд      | 127840000           | Matrices are equal |
-|800 на 800         |  2371280 микросекунд     | 1023360000          | Matrices are equal |
-|1200 на 1200       |  8879470 микросекунд     | 3454560000          | Matrices are equal |
-|1600 на 1600       |  20386100 микросекунд    | 8189440000          | Matrices are equal |
+|200 на 200         |  231 микросекунд         | 15960000            | Matrices are equal |
+|400 на 400         |  376 микросекунд         | 127840000           | Matrices are equal |
+|800 на 800         |  3306 микросекунд        | 1023360000          | Matrices are equal |
+|1200 на 1200       |  11297 микросекунд       | 3454560000          | Matrices are equal |
+|1600 на 1600       |  16347 микросекунд       | 8189440000          | Matrices are equal |
 
-### Для 8 потоков
-|   Размер матрицы  |     Время выполнения     | Количество операций | Результат проверки |
-|:-----------------:|:------------------------:|:-------------------:|:------------------:|
-|200 на 200         |  27465 микросекунд       | 15960000            | Matrices are equal |
-|400 на 400         |  23452 микросекунд       | 127840000           | Matrices are equal |
-|800 на 800         |  1872300 микросекунд     | 1023360000          | Matrices are equal |
-|1200 на 1200       |  6325110 микросекунд     | 3454560000          | Matrices are equal |
-|1600 на 1600       |  15043000 микросекунд    | 8189440000          | Matrices are equal |
-
-### Для 10 потоков
-|   Размер матрицы  |     Время выполнения     | Количество операций | Результат проверки |
-|:-----------------:|:------------------------:|:-------------------:|:------------------:|
-|200 на 200         |  23844 микросекунд       | 15960000            | Matrices are equal |
-|400 на 400         |  221862 микросекунд      | 127840000           | Matrices are equal |
-|800 на 800         |  1870510 микросекунд     | 1023360000          | Matrices are equal |
-|1200 на 1200       |  6162330 микросекунд     | 3454560000          | Matrices are equal |
-|1600 на 1600       |  14755300 микросекунд    | 8189440000          | Matrices are equal |
 
 ## Выводы
-![График времени выполнения](graph_performance_3.png)
-Как видно из графика значительное ускорение программы произошло только при переходе с 1 процесса до 2. В остальных случаях, хотя и есть улучшения по времени, они не такие большие. При 8 потоках и 10 разницы вообще не наблюдается. Но, если сравнивать с результатами, полученными при распаралелливании с OpenMP, то можно заметить насколько сильно оптимизировался код. Например, на 4 процессах OpenMP перемножает матрицы размерами 1600 на 1600 за ~50 секунд, а OpenMPI - за ~20 секунд.
+![График времени выполнения](graph_performance_4.png)
+За все 4 лабораторные работы данные результаты являются наилучшими. По технологии OpenMPI при 10 потоках матрицы размерами 1600 на 1600 пермножаются за 14755300 микросекунд, что в 900 раз дольше, чем перемножение тех же матриц с помощью CUDA. Если же сравнивать результаты между размным количеством потоков в блоке, то все примерно одинаково эффективно. Даже когда в блоке 64 потока, разница заметна только при размере матрицы 1600 на 1600. И то, возможно, это просто наихудший результат.
+
+За все 4 лабораторные работы данные результаты являются наилучшими. По технологии OpenMPI при 10 потоках матрицы размерами 1600×1600 перемножаются за 14755300 микросекунд, что в 900 раз дольше, чем перемножение тех же матриц с помощью CUDA. Если же сравнивать результаты между разным количеством потоков в блоке, то всё примерно одинаково эффективно. Даже когда в блоке 64 потока, разница заметна только при размере матрицы 1600×1600. И то, возможно, это просто наихудший результат.
